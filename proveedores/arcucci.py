@@ -38,6 +38,7 @@ Importante, el CSV siempre tiene que tener 7 columnas.
 ❗ No incluyas la columna Precio calculado. Esa se calculará luego en Python.
 ⚠ No modifiques la información del OCR.
 🧾 El proveedor será "ARCUCCI".
+** Producto: Es la descripción del producto, en este proveedor compramos generalmente artículos de limpieza y packagine, entre otros. No confundas este campo "Producto" con el código del proveedor, código cual por ahora no nos interesa.
 Tenes prohibido inventar, redondear cualquier numero o información. Solo podes organizar la extracción del OCR basado en las siguientes reglas:
 📍 El Local será el texto que sigue a la palabra "SEÑOR/ES".
     ** ¡¡ MUY IMPORTANTE, CAMPO 'CANTIDAD'!!:
