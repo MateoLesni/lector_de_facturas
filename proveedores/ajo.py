@@ -1,6 +1,7 @@
 import pandas as pd
 from io import StringIO
 from connect_gemini import estructurar_con_prompt_especifico
+import csv
 
 def procesar(texto_ocr):
     # 🔧 Preprocesamiento: unir líneas cortadas en la tabla
@@ -16,7 +17,8 @@ def procesar(texto_ocr):
     # 🧠 Prompt
     prompt = f"""
 Tu rol es actuar como un operador de Data Entry para una empresa gastronómica. Vas a estructurar facturas como una tabla con las siguientes columnas:
-Fecha, Producto, Cantidad, Precio OCR, Total, Local, Proveedor
+Las columnas deben estar en el siguiente orden exacto:
+"Fecha","Producto","Cantidad","Precio OCR","Total","Local","Proveedor"
 
 ❗ No incluyas la columna Precio. Esa será calculada luego.
 ⚠ No modifiques la información del OCR.
@@ -46,10 +48,23 @@ Texto OCR:
     if not resultado_csv or resultado_csv.strip() == "":
         print("⚠️ Gemini no devolvió datos útiles.")
         return None
-
+    
     try:
-        df = pd.read_csv(StringIO(resultado_csv), header=None)
-        df.columns = ["Fecha", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"]
+        # 🔎 Validación previa de estructura con csv.reader
+        filas_validas = []
+        for linea in resultado_csv.strip().splitlines():
+            reader = csv.reader([linea], delimiter=',', quotechar='"')
+            for partes in reader:
+                if len(partes) == 7:
+                    filas_validas.append([p.strip() for p in partes])
+                else:
+                    print(f"⚠️ Fila descartada por estructura inválida: {linea}")
+
+        if not filas_validas:
+            print("❌ No hay filas válidas en el CSV generado.")
+            return None
+
+        df = pd.DataFrame(filas_validas, columns=["Fecha", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"])
 
         # 🧼 Limpieza segura de números
         def limpiar_numero(valor):
@@ -62,28 +77,33 @@ Texto OCR:
         df["Total"] = df["Total"].apply(limpiar_numero)
         df["Precio OCR"] = df["Precio OCR"].apply(limpiar_numero)
 
-        # 🧹 Eliminar filas mal formateadas
         df = df.dropna(subset=["Cantidad", "Total"])
 
-        # 💰 Cálculo del precio unitario
+        # 💰 Cálculos y controles
         df["Precio"] = (df["Total"] / df["Cantidad"]).round(2)
-        df["Precio Check"] = df["Precio OCR"]
-        df["Total Check"] = df["Precio Check"] * df["Cantidad"]
+        df["Precio Check"] = df["Precio OCR"].round(2)
+        df["Total Check"] = (df["Precio Check"] * df["Cantidad"]).round(2)
         df["Dif Precio"] = (df["Precio Check"] - df["Precio"]).round(2)
         df["Dif Total"] = (df["Total Check"] - df["Total"]).round(2)
+        df["Q Check"] = (df["Total"] / df["Precio"]).round(2)
+        df["Dif Q"] = (df["Q Check"] - df["Cantidad"]).round(2)
 
         def generar_alerta(row):
             if abs(row["Dif Precio"]) > 2:
                 return "Diferencia de Precio"
             elif abs(row["Dif Total"]) > 2:
                 return "Diferencia de Total"
+            elif abs(row["Dif Q"]) > 0:
+                return "Diferencia de Total"
             else:
-                return "OK"   
-        df["Alerta"] = df.apply(generar_alerta, axis=1)  
+                return "OK"
 
+        df["Alerta"] = df.apply(generar_alerta, axis=1)
 
-
-        columnas_finales = ["Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta", "Precio Check", "Total Check"]
+        columnas_finales = [
+            "Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta",
+            "Precio Check", "Total Check", "Q Check"
+        ]
         return df[columnas_finales]
 
     except Exception as e:
