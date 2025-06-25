@@ -94,7 +94,7 @@ Texto OCR:
             elif abs(row["Dif Total"]) > 2:
                 return "Diferencia de Total"
             elif abs(row["Dif Q"]) > 0:
-                return "Diferencia de Total"
+                return "Diferencia de Q"
             else:
                 return "OK"
 
