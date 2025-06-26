@@ -56,17 +56,36 @@ Texto OCR:
             valor = str(valor).strip()
             if valor == "" or pd.isna(valor):
                 return 0.0
-            if "." in valor and len(valor) <= 4:
+
+            # Caso 1: contiene coma decimal (correcto en OCR español)
+            if "," in valor and "." not in valor:
                 valor = valor.replace(",", ".")
                 try:
                     return float(valor)
                 except:
                     return 0.0
-            valor = valor.replace(".", "").replace(",", ".")
+
+            # Caso 2: ya está como número decimal con punto
+            if "." in valor and valor.replace(".", "").isdigit():
+                try:
+                    return float(valor)
+                except:
+                    return 0.0
+
+            # Caso 3: número entero grande mal interpretado, ej: "1151" debería ser "11.51"
+            if valor.isdigit() and len(valor) >= 3:
+                valor = valor[:-2] + "." + valor[-2:]
+                try:
+                    return float(valor)
+                except:
+                    return 0.0
+
+            # Último intento
             try:
                 return float(valor)
             except:
                 return 0.0
+
 
         def limpiar_numero(valor):
             if pd.isna(valor):
