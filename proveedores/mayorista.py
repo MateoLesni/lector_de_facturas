@@ -2,6 +2,46 @@ import pandas as pd
 from io import StringIO
 from connect_gemini import estructurar_con_prompt_especifico
 
+def limpiar_cantidad(valor):
+    val = str(valor).strip()
+    if val == "" or pd.isna(val):
+        return 0.0
+
+    # Reemplazar "," por "." y remover espacios
+    val = val.replace(",", ".").replace(" ", "")
+
+    # Si hay más de un ".", dejar solo el último como separador decimal
+    if val.count(".") > 1:
+        partes = val.split(".")
+        val = "".join(partes[:-1]) + "." + partes[-1]
+
+    try:
+        return float(val)
+    except:
+        return 0.0
+
+def limpiar_numero(valor):
+    if pd.isna(valor):
+        return 0.0
+
+    val = str(valor).strip().lower()
+
+    if val in ["oferta", ""]:
+        return 0.0
+
+    # Reemplazar "," por "." y remover espacios
+    val = val.replace(",", ".").replace(" ", "")
+
+    # Si hay más de un ".", dejar solo el último como separador decimal
+    if val.count(".") > 1:
+        partes = val.split(".")
+        val = "".join(partes[:-1]) + "." + partes[-1]
+
+    try:
+        return float(val)
+    except:
+        return 0.0
+
 def procesar(texto_ocr):
     prompt = f"""
 Tu rol es actuar como un operador de Data Entry para una empresa gastronómica. Vas a estructurar facturas como una tabla con las siguientes columnas:
@@ -36,12 +76,11 @@ Texto OCR:
 \"\"\"{texto_ocr}\"\"\"
 """
     resultado_csv = estructurar_con_prompt_especifico(prompt)
-
     if not resultado_csv or resultado_csv.strip() == "":
         print("⚠️ Gemini no devolvió datos útiles.")
         return None
 
-    resultado_csv = resultado_csv.replace('", "', '","')  # limpiar espacios que rompen el CSV
+    resultado_csv = resultado_csv.replace('", "', '","')  # limpieza básica
 
     try:
         df = pd.read_csv(StringIO(resultado_csv), header=None)
@@ -52,110 +91,24 @@ Texto OCR:
             raise ValueError(f"Formato inesperado: se esperaban {len(columnas)} columnas, pero se recibieron {df.shape[1]}.")
         df.columns = columnas
 
-        def limpiar_cantidad(valor):
-            valor = str(valor).strip()
-            if valor == "" or pd.isna(valor):
-                return 0.0
-
-            # Caso 1: contiene coma decimal (correcto en OCR español)
-            if "," in valor and "." not in valor:
-                valor = valor.replace(",", ".")
-                try:
-                    return float(valor)
-                except:
-                    return 0.0
-
-            # Caso 2: ya está como número decimal con punto
-            if "." in valor and valor.replace(".", "").isdigit():
-                try:
-                    return float(valor)
-                except:
-                    return 0.0
-
-            # Caso 3: número entero grande mal interpretado, ej: "1151" debería ser "11.51"
-            if valor.isdigit() and len(valor) >= 3:
-                valor = valor[:-2] + "." + valor[-2:]
-                try:
-                    return float(valor)
-                except:
-                    return 0.0
-
-            # Último intento
-            try:
-                return float(valor)
-            except:
-                return 0.0
-
-
-        def limpiar_numero(valor):
-            if pd.isna(valor):
-                return 0.0
-
-            valor = str(valor).strip()
-            if valor.lower() == "oferta" or valor == "":
-                return 0.0
-
-            # 1. Caso con punto como separador de mil y coma como decimal: "3.066,70"
-            if "." in valor and "," in valor:
-                valor = valor.replace(".", "").replace(",", ".")
-                try:
-                    return float(valor)
-                except:
-                    return 0.0
-
-            # 2. Caso como "30.772.55"
-            if valor.count(".") == 2:
-                partes = valor.split(".")
-                valor = "".join(partes[:-1]) + "," + partes[-1]
-                valor = valor.replace(",", ".")
-                try:
-                    return float(valor)
-                except:
-                    return 0.0
-
-            # 3. Caso sin coma y largo (ej: "3066700" → "30667.00")
-            if valor.isdigit() and len(valor) > 5:
-                valor = valor[:-2] + "." + valor[-2:]
-                try:
-                    return float(valor)
-                except:
-                    return 0.0
-
-            # 4. Caso con coma decimal: "24999,99"
-            if "," in valor and "." not in valor:
-                valor = valor.replace(",", ".")
-                try:
-                    return float(valor)
-                except:
-                    return 0.0
-
-            # 5. Último intento
-            valor = valor.replace(",", ".")
-            try:
-                return float(valor)
-            except:
-                return 0.0
-
-
         df["Cantidad"] = df["Cantidad"].apply(limpiar_cantidad)
         df["Precio OCR"] = df["Precio OCR"].apply(limpiar_numero)
 
         es_oferta = df["Total"].astype(str).str.lower().str.strip() == "oferta"
         df.loc[~es_oferta, "Total"] = df.loc[~es_oferta, "Total"].apply(limpiar_numero)
-        df.loc[es_oferta, "Total"] = (df.loc[es_oferta, "Precio OCR"] * df.loc[es_oferta, "Cantidad"]).round(2)
+        df.loc[es_oferta, "Total"] = (df["Cantidad"] * df["Precio OCR"]).round(2)
 
         df["Total"] = pd.to_numeric(df["Total"], errors="coerce").fillna(0.0)
         df["Cantidad"] = pd.to_numeric(df["Cantidad"], errors="coerce").fillna(0.0)
+        df["Precio"] = (df["Total"] / df["Cantidad"]).round(2).replace([float("inf"), -float("inf")], 0.0)
 
-        df["Precio"] = (df["Total"] / df["Cantidad"]).round(2)
-        df["Precio"] = df["Precio"].replace([float("inf"), -float("inf")], 0.0).fillna(0.0)
-
-        # Controles de verificación
+        # Controles cruzados
         df["Precio Check"] = df["Precio OCR"].round(2)
         df["Total Check"] = (df["Precio Check"] * df["Cantidad"]).round(2)
+        df["Q Check"] = (df["Total"] / df["Precio"]).round(2)
+
         df["Dif Precio"] = (df["Precio Check"] - df["Precio"]).round(2)
         df["Dif Total"] = (df["Total Check"] - df["Total"]).round(2)
-        df["Q Check"] = (df["Total"] / df["Precio"]).round(2)
         df["Dif Q"] = (df["Q Check"] - df["Cantidad"]).round(2)
 
         def generar_alerta(row):
@@ -165,15 +118,50 @@ Texto OCR:
                 return "Diferencia de Total"
             elif abs(row["Dif Q"]) > 0:
                 return "Diferencia de Q"
-            else:
-                return "OK"
+            return "OK"
 
         df["Alerta"] = df.apply(generar_alerta, axis=1)
 
-        columnas_finales = ["Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta",
-                            "Precio Check", "Total Check", "Q Check"]
+        columnas_finales = [
+            "Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor",
+            "Alerta", "Precio Check", "Total Check", "Q Check"
+        ]
         return df[columnas_finales]
 
     except Exception as e:
         print(f"❌ Error al procesar CSV en {__file__}: {e}")
         return None
+
+def prompt_imgia(download_url):
+    return f'''
+Estás en rol de un Data Entry profesional. Vas a procesar la siguiente imagen de una factura gastronómica.
+
+🔗 Enlace a la imagen: {download_url}
+Extraé la siguiente información y devolvela en formato CSV:
+Respeta estas 4 columnas, siempre deben ser las mismas. La información está en la factura, no hay información faltante.
+No agregues columnas ni quites. Deben ser estas 4.
+Columnas:
+- "Producto Gem"  usar "Descripción"
+- "Cantidad Gem" → usar "Cant.Kg" si está, si no "Cant.Uni". Es decir, siempre trae con prioridad "Cant.Kg", si ese campo está vacío, traes "Cant.Uni"
+- "Precio Gem" usar "Precio Unit"
+- "Total Gem" usar "Total"
+
+No agregues ninguna palabra, ningún texto ni carácter antes ni después del CSV. Solo quiero la tabla limpia con los datos correctos para que no se rompan los procesos posteriores.
+
+📌 Instrucciones:
+- No pongas texto fuera del CSV.
+- Si no hay un campo, dejar en blanco ("").
+- Usá comillas dobles en todos los valores.
+- Sin encabezado.
+- Separador de columnas: coma.
+- Repetí la fecha en todas las líneas.
+- No uses separadores de miles.
+- Una línea por producto.
+
+Una devolución correcta es exactamente así (Ejemplo):
+"Barritas de submarino Aguila Caja (24 x 14 gr)","1","14946,31","14946,31"
+"Queso Crema Milka ut Balde x 3.6 Kg","2","40698,53","81397,05"
+"Rebozador Preferido Bolsa x 5 Kg","1","8961,05","8961,05"
+
+Imagen: {download_url}
+'''
