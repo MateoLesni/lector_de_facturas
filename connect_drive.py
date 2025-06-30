@@ -40,6 +40,21 @@ def obtener_imagen_desde_drive(file_id):
     response.raise_for_status()
     return Image.open(BytesIO(response.content))
 
+def alinear_y_combinar(df_ocr, df_img_raw):
+    """
+    Si OCRIA devuelve una sola fila y Gemini varias, se permite expandir.
+    En otros casos, Gemini no puede agregar filas.
+    """
+    # Alinear longitud si OCRIA tiene solo una fila
+    if len(df_ocr) == 1 and len(df_img_raw) > 1:
+        df_ocr = pd.DataFrame([[""] * df_ocr.shape[1]] * len(df_img_raw), columns=df_ocr.columns)
+    elif len(df_ocr) != len(df_img_raw):
+        df_img_raw = df_img_raw.reindex(range(len(df_ocr))).fillna("")
+
+    df_final = pd.concat([df_ocr.reset_index(drop=True), df_img_raw.reset_index(drop=True)], axis=1)
+    return df_final
+
+
 def main():
     folder_id = '1YCEgOfDfyD9levr4_ouoXpxy0l0n5QXH'
     imagenes = listar_imagenes(folder_id)
@@ -51,7 +66,7 @@ def main():
 
         for archivo in os.listdir("proveedores"):
             if archivo.endswith(".py") and archivo != "__init__.py":
-                proveedor = archivo[:-3].lower()  # Correcto: quita ".py"
+                proveedor = archivo[:-3].lower()
                 if proveedor in nombre_archivo:
                     print(f"\n📄 Procesando imagen: {img['name']} con proveedor: {proveedor}")
                     texto = traer_texto_png(file_id)
@@ -77,7 +92,7 @@ def main():
                             resultado_img = estructurar_con_prompt_imgia(prompt_img, imagen_pil)
 
                             columnas_img = ["Código Gem", "Producto Gem", "Cantidad Gem", "Precio Gem", "Total Gem"]
-                            df_img_raw = pd.DataFrame(columns=columnas_img)  # <- en caso de error, esta ya existe
+                            df_img_raw = pd.DataFrame(columns=columnas_img)
 
                             if resultado_img:
                                 print("\n📥 Resultado crudo de IMGIA:")
@@ -87,7 +102,6 @@ def main():
                                     if df_img_raw.shape[1] == 5:
                                         df_img_raw.columns = columnas_img
 
-                                        # Aplicar funciones de limpieza si existen
                                         for col, func_name in [
                                             ("Cantidad Gem", "limpiar_cantidad"),
                                             ("Precio Gem", "limpiar_numero"),
@@ -107,11 +121,9 @@ def main():
                                     print(f"❌ Error al convertir resultado IMGIA en DataFrame: {e}")
                                     df_img_raw = pd.DataFrame(columns=columnas_img)
 
-                            # Alinear longitud
-                            df_img_raw = df_img_raw.reindex(range(len(df_ocr))).fillna("")
-                            df_final = pd.concat([df_ocr.reset_index(drop=True), df_img_raw.reset_index(drop=True)], axis=1)
+                            # Alinear y combinar según nueva lógica
+                            df_final = alinear_y_combinar(df_ocr, df_img_raw)
 
-                            # Evitar duplicados de nombres de columna
                             if pd.Series(df_final.columns).duplicated().any():
                                 df_final.columns = [
                                     f"{col}_{i}" if pd.Series(df_final.columns).duplicated()[j] else col

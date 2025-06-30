@@ -3,6 +3,47 @@ from io import StringIO
 from connect_gemini import estructurar_con_prompt_especifico
 import csv
 
+def limpiar_cantidad(valor):
+    val = str(valor).strip()
+    if val == "" or pd.isna(val):
+        return 0.0
+
+    # Reemplazar "," por "." y remover espacios
+    val = val.replace(",", ".").replace(" ", "")
+
+    # Si hay más de un ".", dejar solo el último como separador decimal
+    if val.count(".") > 1:
+        partes = val.split(".")
+        val = "".join(partes[:-1]) + "." + partes[-1]
+
+    try:
+        return float(val)
+    except:
+        return 0.0
+
+def limpiar_numero(valor):
+    if pd.isna(valor):
+        return 0.0
+
+    val = str(valor).strip().lower()
+
+    if val in ["oferta", ""]:
+        return 0.0
+
+    # Reemplazar "," por "." y remover espacios
+    val = val.replace(",", ".").replace(" ", "")
+
+    # Si hay más de un ".", dejar solo el último como separador decimal
+    if val.count(".") > 1:
+        partes = val.split(".")
+        val = "".join(partes[:-1]) + "." + partes[-1]
+
+    try:
+        return float(val)
+    except:
+        return 0.0
+
+
 def procesar(texto_ocr):
     # 🔧 Preprocesamiento: unir líneas cortadas en la tabla
     lineas = texto_ocr.split("\n")
@@ -18,11 +59,13 @@ def procesar(texto_ocr):
     prompt = f"""
 Tu rol es actuar como un operador de Data Entry para una empresa gastronómica. Vas a estructurar facturas como una tabla con las siguientes columnas:
 Las columnas deben estar en el siguiente orden exacto:
-"Fecha","Producto","Cantidad","Precio OCR","Total","Local","Proveedor"
+"Código","Producto","Cantidad","Precio OCR","Total","Local","Proveedor"
 
+Está totalmente prohibido inventar información. Si no encuentras algo, como última opción pon "0". La información está toda en el texto del OCR.
+Prohibido agregar texto, carácteres o letras antes o despúes del csv. (Ejemplo prohibido: ```csv)
 ❗ No incluyas la columna Precio. Esa será calculada luego.
 ⚠ No modifiques la información del OCR.
-** Fecha: Es de las primeras líneas, luego de "Fecha de entrega:" en formato "xx/xx/xxxx".
+** Código: Es la primer columna, que se referencia como "ID". El contenido, osea los ID o Códigos puede variar un poco pero generalmente siguen un formato como: ECOM035, ECOM107. 
 ** Producto: Corresponde a descripcion de cada producto, columna "Producto".
 ** Cantidad: Corresponde a los valores de la columna "Cantidad", la cual nos brinda información de cuantos kgs o unidades compramos. Ten en cuenta en este campo que, el proveedor indica de estas maneras: "1.0" para decir correctamente una unidad (1). No uses separador de miles, solo "," comas para separador de decimales.
 ** Ejemplo de valores en Cantidad que se presentarán en las facturas: "40.0", Correcta transformacion: "40,0". Ej: "1.0", Correcta transofrmación: "1,0".
@@ -33,6 +76,7 @@ Las columnas deben estar en el siguiente orden exacto:
 🧾 El proveedor será "Ajo".
 
 **Formato CSV válido:**
+Tenes prohibido agregar texto, información o lo que fuera antes o después del csv. Solo quiero la tabla con información, lista para integrar en posteriores procesos.
 - Todos los campos entre comillas dobles (").
 - Separados por coma.
 - Una línea por producto.
@@ -109,3 +153,33 @@ Texto OCR:
     except Exception as e:
         print(f"❌ Error al procesar CSV en {__file__}: {e}")
         return None
+    
+
+def prompt_imgia(download_url):
+    return f'''
+Estás en rol de un Data Entry profesional. Vas a procesar la siguiente imagen de una factura gastronómica.
+
+🔗 Enlace a la imagen: {download_url}
+Las columnas deben estar en el siguiente orden exacto:
+"Código Gem","Producto Gem","Cantidad Gem","Precio Gem,"Total Gem"
+
+⚠ No modifiques la información del OCR.
+** Código: Es la primer columna, que se referencia como "ID". El contenido, osea los ID o Códigos puede variar un poco pero generalmente siguen un formato como: ECOM035, ECOM107. 
+** Producto: Corresponde a descripcion de cada producto, columna "Producto".
+** Cantidad: Corresponde a los valores de la columna "Cantidad", la cual nos brinda información de cuantos kgs o unidades compramos. Ten en cuenta en este campo que, el proveedor indica de estas maneras: "1.0" para decir correctamente una unidad (1). No uses separador de miles, solo "," comas para separador de decimales.
+** Ejemplo de valores en Cantidad que se presentarán en las facturas: "40.0", Correcta transformacion: "40,0". Ej: "1.0", Correcta transofrmación: "1,0".
+** Ignora los valores de la columna "Unidad".
+** Precio OCR: Corresponde a la columna "Precio" unitario. Ten en cuenta que, al igual que en cantidad, el proveedor puede indicarnos de manera: "81.704,32" para informarnos de, (manera que corresponde) 81704,32. Es importante que incluyas las comas "," en los decimales. No incluyas separador de miles.
+** Total: Corresponde a la columna "Total". Ten en cuenta que, al igual que en cantidad, el proveedor puede indicarnos de manera: "81.704,32" para informarnos de, (manera que corresponde) 81704,32. Es importante que incluyas las comas "," en los decimales. No incluyas separador de miles.
+
+**Formato CSV válido:**
+Prohibido agregar letras, texto, palabras antes o después del CSV. Solo necesito la tabla limpia con la información. No pongas ```csv ni ningun carácter fuera del CSV.
+- Todos los campos entre comillas dobles (").
+- Separados por coma.
+- Una línea por producto.
+- Repetí la fecha si aparece solo una vez.
+- No uses separadores de miles.
+- Sin encabezado.
+
+Imagen: {download_url}
+'''
