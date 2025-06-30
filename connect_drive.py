@@ -76,7 +76,7 @@ def main():
                             imagen_pil = obtener_imagen_desde_drive(file_id)
                             resultado_img = estructurar_con_prompt_imgia(prompt_img, imagen_pil)
 
-                            columnas_img = ["Producto Gem", "Cantidad Gem", "Precio Gem", "Total Gem"]
+                            columnas_img = ["Código Gem", "Producto Gem", "Cantidad Gem", "Precio Gem", "Total Gem"]
                             df_img_raw = pd.DataFrame(columns=columnas_img)  # <- en caso de error, esta ya existe
 
                             if resultado_img:
@@ -84,7 +84,7 @@ def main():
                                 print(resultado_img)
                                 try:
                                     df_img_raw = pd.read_csv(StringIO(resultado_img), header=None)
-                                    if df_img_raw.shape[1] == 4:
+                                    if df_img_raw.shape[1] == 5:
                                         df_img_raw.columns = columnas_img
 
                                         # Aplicar funciones de limpieza si existen

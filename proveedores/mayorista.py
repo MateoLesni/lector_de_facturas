@@ -51,7 +51,7 @@ Fecha, Producto, Cantidad, Precio OCR, Total, Local, Proveedor
 ❗ No incluyas la columna Precio. Esa será calculada luego.
 Tenes prohibido redondear, inventar o agregar información. Solo estructuras la información brindada por el OCR.
 ⚠ No modifiques la información del OCR.
-** Fecha: Es de las primeras líneas, luego de "Fecha" en formato "xx/xx/xxxx".
+** Código: Devuelve el código de cada artículo. Los códigos pueden variar, pero generalmente tienen un formato así: F00098, F00516, A00645, A00801, G00498.
 ** Producto: Corresponde a "Descripción" de cada producto.
 ** Cantidad: Corresponde a los valores de la columna "CANT.Uni". Sólo en caso de, en la misma línea, exista un valor en "Cant.KG", dejarás solamente el valor de "Cant.KG".
 ** Ambos campos de cantidad están posterior a la descripción. Si no hay de una, hay de la otra y pueden haber ambas. Si hay ambas, tiene prioridad la de "Cant.KG", recuerda.
@@ -64,7 +64,7 @@ Tenes prohibido redondear, inventar o agregar información. Solo estructuras la 
 ‼️ Siempre devolvé las 7 columnas mencionadas, incluso si algún campo está vacío. No omitas columnas. Usá "" para celdas vacías.
 
 **Formato CSV válido:**
-- Siempre 7 columnas: "Fecha","Producto","Cantidad","Precio OCR","Total","Local","Proveedor"
+- Siempre 7 columnas: "Código","Producto","Cantidad","Precio OCR","Total","Local","Proveedor"
 - Todos los campos entre comillas dobles (").
 - Separados por coma.
 - Una línea por producto.
@@ -138,9 +138,10 @@ Estás en rol de un Data Entry profesional. Vas a procesar la siguiente imagen d
 
 🔗 Enlace a la imagen: {download_url}
 Extraé la siguiente información y devolvela en formato CSV:
-Respeta estas 4 columnas, siempre deben ser las mismas. La información está en la factura, no hay información faltante.
+Respeta estas 5 columnas, siempre deben ser las mismas. La información está en la factura, no hay información faltante.
 No agregues columnas ni quites. Deben ser estas 4.
 Columnas:
+- "Código Gem" usar el "Código" del proveedor para cada artículo. Los códigos pueden variar, pero generalmente tienen un formato así: F00098, F00516, A00645, A00801, G00498.
 - "Producto Gem"  usar "Descripción"
 - "Cantidad Gem" → usar "Cant.Kg" si está, si no "Cant.Uni". Es decir, siempre trae con prioridad "Cant.Kg", si ese campo está vacío, traes "Cant.Uni"
 - "Precio Gem" usar "Precio Unit"
