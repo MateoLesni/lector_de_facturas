@@ -67,6 +67,19 @@ Prohibido agregar texto, carácteres o letras antes o despúes del csv. (Ejemplo
 ⚠ No modifiques la información del OCR.
 ** Código: Es la primer columna, que se referencia como "ID". El contenido, osea los ID o Códigos puede variar un poco pero generalmente siguen un formato como: ECOM035, ECOM107. 
 ** Producto: Corresponde a descripcion de cada producto, columna "Producto".
+En el campo Producto puede que de desacomoden las columnas en el OCR, por ende, te voy a dar algunos artículos (no todos), para que entiendas en dónde están ubicadas las descripciones correctamente en el OCR, para que no te confundas con otro campo:
+Pan de Pebete,Baby Ribs Ahumado,Pulled Bites,Patitas de Pollo,Salsa Cheddar,Salsa BBQ Baby,Ali oli,Bbq Black,Salsa Coleslaw,Salsa de remolacha,Empanadas de Carne,Recargo 15% por refuerzo,Queso Pategras,SAL DE HAMBURGUESA,Mantel Grande (parafinado con logo),MEDALLON DE HAMBURGUESA,Beef Ahumado (Beef Ahumado (pulled)),Spare Ribs Ahumadas,St. Louis ahumadas,Salsa lomo / beef,Hummus,Pepinos encurtido seco,Locro,SALSA DE HAMBURGUESA,Queso Crispy,Pan de papa,PAN CON SESAMO PARA HAMBURGUESA,Panceta para hamburguesa,Lomo Ahumado (Porcionado),All Oli,Sal de papas fritas,Mantel Tetra 5%co,Tortilla de Miel,Pan de paov
+Beef Ahumado (Beef Ahumado (pulle-fil)  
+Pulled Poix (Pulled Poix)
+Lomo Ahumado (Porcionado)
+Pollo Ahumado (para Caesar)
+PAPEL BOBINA KRAFT ANCHO 40CM - CON LOGO
+Buzo para personal (S)
+Tortilla de Maíz
+Pulled Pork (Pulled Pork)
+AROS DE CEBOLLA
+Buzo para personal (M)
+Pan de Pebete
 ** Cantidad: Corresponde a los valores de la columna "Cantidad", la cual nos brinda información de cuantos kgs o unidades compramos. Ten en cuenta en este campo que, el proveedor indica de estas maneras: "1.0" para decir correctamente una unidad (1). No uses separador de miles, solo "," comas para separador de decimales.
 ** Ejemplo de valores en Cantidad que se presentarán en las facturas: "40.0", Correcta transformacion: "40,0". Ej: "1.0", Correcta transofrmación: "1,0".
 ** Ignora los valores de la columna "Unidad".
@@ -80,7 +93,7 @@ Tenes prohibido agregar texto, información o lo que fuera antes o después del 
 - Todos los campos entre comillas dobles (").
 - Separados por coma.
 - Una línea por producto.
-- Repetí la fecha si aparece solo una vez.
+- Repetí la Codigo si aparece solo una vez.
 - No uses separadores de miles.
 - Sin encabezado.
 
@@ -108,7 +121,7 @@ Texto OCR:
             print("❌ No hay filas válidas en el CSV generado.")
             return None
 
-        df = pd.DataFrame(filas_validas, columns=["Fecha", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"])
+        df = pd.DataFrame(filas_validas, columns=["Codigo", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"])
 
         # 🧼 Limpieza segura de números
         def limpiar_numero(valor):
@@ -145,7 +158,7 @@ Texto OCR:
         df["Alerta"] = df.apply(generar_alerta, axis=1)
 
         columnas_finales = [
-            "Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta",
+            "Codigo", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta",
             "Precio Check", "Total Check", "Q Check"
         ]
         return df[columnas_finales]
@@ -192,7 +205,7 @@ Prohibido agregar letras, texto, palabras antes o después del CSV. Solo necesit
 - Todos los campos entre comillas dobles (").
 - Separados por coma.
 - Una línea por producto.
-- Repetí la fecha si aparece solo una vez.
+- Repetí la Codigo si aparece solo una vez.
 - No uses separadores de miles.
 - Sin encabezado.
 

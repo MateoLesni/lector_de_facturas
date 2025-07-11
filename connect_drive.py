@@ -3,21 +3,37 @@ import importlib
 import pandas as pd
 from io import StringIO, BytesIO
 from mistral_ai import traer_texto_png
-from connect_gemini import estructurar_con_prompt_especifico, estructurar_con_prompt_imgia, limpiar_csv_de_respuesta
+from connect_gemini import estructurar_con_prompt_imgia, limpiar_csv_de_respuesta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from openpyxl import load_workbook
 from PIL import Image
 import requests
 import csv
+from google.api_core.client_options import ClientOptions
+from google.cloud import documentai_v1 as documentai
 
-# Configuración de acceso a Google Drive
+# --- Configuración Google Drive ---
 SERVICE_ACCOUNT_FILE = 'credentials/credentials.json'
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-
 creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 service = build('drive', 'v3', credentials=creds)
 
+# --- Configuración Document AI ---
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google_ocr.json"
+PROJECT_ID = "600456283474"
+LOCATION = "us"
+PROCESSOR_ID = "b668a0883f50e7fa"
+ENDPOINT = "us-documentai.googleapis.com"
+PROCESSOR_NAME = f"projects/{PROJECT_ID}/locations/{LOCATION}/processors/{PROCESSOR_ID}"
+client_options = ClientOptions(api_endpoint=ENDPOINT)
+docai_client = documentai.DocumentProcessorServiceClient(client_options=client_options)
+
+# --- Configuración general ---
+proveedores_documentai = ["quilmes", "pepita"]
+columnas_img = ["Código Gem", "Producto Gem", "Cantidad Gem", "Precio Gem", "Total Gem"]
+
+# --- Funciones auxiliares ---
 def listar_imagenes(folder_id):
     query = f"'{folder_id}' in parents and trashed = false"
     resultados = service.files().list(q=query, fields="files(id, name, mimeType)").execute()
@@ -41,13 +57,35 @@ def obtener_imagen_desde_drive(file_id):
     response.raise_for_status()
     return Image.open(BytesIO(response.content))
 
+def procesar_con_document_ai(file_id):
+    try:
+        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+        response = requests.get(url)
+        response.raise_for_status()
+        image_bytes = response.content
+
+        raw_document = documentai.RawDocument(content=image_bytes, mime_type="image/jpeg")
+        request = documentai.ProcessRequest(name=PROCESSOR_NAME, raw_document=raw_document)
+        result = docai_client.process_document(request=request)
+        return result.document
+
+    except Exception as e:
+        print(f"❌ Error al procesar imagen con Document AI: {e}")
+        return None
+
 def alinear_y_combinar(df_ocr, df_img_raw):
+    if df_img_raw.empty:
+        return df_ocr
+
     if len(df_ocr) == 1 and len(df_img_raw) > 1:
         df_ocr = pd.DataFrame([[""] * df_ocr.shape[1]] * len(df_img_raw), columns=df_ocr.columns)
     elif len(df_ocr) != len(df_img_raw):
         df_img_raw = df_img_raw.reindex(range(len(df_ocr))).fillna("")
+
     return pd.concat([df_ocr.reset_index(drop=True), df_img_raw.reset_index(drop=True)], axis=1)
 
+
+# --- MAIN ---
 def main():
     folder_id = '1YCEgOfDfyD9levr4_ouoXpxy0l0n5QXH'
     imagenes = listar_imagenes(folder_id)
@@ -62,30 +100,50 @@ def main():
                 proveedor = archivo[:-3].lower()
                 if proveedor in nombre_archivo:
                     print(f"\n📄 Procesando imagen: {img['name']} con proveedor: {proveedor}")
-                    texto = traer_texto_png(file_id)
+                    modulo = importlib.import_module(f'proveedores.{proveedor}')
 
-                    if texto:
+                    if proveedor in proveedores_documentai:
+                        print("🔍 OCR con Document AI")
+                        document = procesar_con_document_ai(file_id)
+                        if not document:
+                            continue
+                        try:
+                            procesar = getattr(modulo, "procesar")
+                            df_ocr = procesar(document, img['name'])
+                        except Exception as e:
+                            print(f"❌ Error procesando proveedor '{proveedor}': {e}")
+                            continue
+                        df_final = df_ocr
+
+                    else:
+                        texto = traer_texto_png(file_id)
+                        if not texto:
+                            print("❌ No se pudo extraer texto con Mistral OCR.")
+                            continue
+
                         print("📤 Texto OCR Mistral:")
                         print(texto)
 
                         try:
-                            modulo = importlib.import_module(f'proveedores.{proveedor}')
                             df_ocr = modulo.procesar(texto)
-
                             if df_ocr is None:
                                 print(f"❌ No se pudo procesar OCRIA para proveedor '{proveedor}'")
                                 continue
-
                             print("\n✅ Resultado estructurado OCRIA:")
                             print(df_ocr)
+                        except Exception as e:
+                            print(f"❌ Error procesando proveedor '{proveedor}': {e}")
+                            continue
 
-                            download_url = f"https://drive.google.com/uc?id={file_id}&export=download"
+                        # Gemini IMGIA
+                        df_img_raw = pd.DataFrame(columns=columnas_img)
+                        download_url = f"https://drive.google.com/uc?id={file_id}&export=download"
+
+                        try:
                             prompt_img = modulo.prompt_imgia(download_url)
                             imagen_pil = obtener_imagen_desde_drive(file_id)
                             resultado_img = estructurar_con_prompt_imgia(prompt_img, imagen_pil)
                             resultado_img = limpiar_csv_de_respuesta(resultado_img)
-
-                            columnas_img = ["Código Gem", "Producto Gem", "Cantidad Gem", "Precio Gem", "Total Gem"]
 
                             try:
                                 df_img_raw = pd.read_csv(
@@ -96,15 +154,12 @@ def main():
                                     on_bad_lines='warn'
                                 )
 
-                                if proveedor == "quilmes":
-                                    df_img_raw = modulo.corregir_columna_codigo(df_img_raw)
 
                                 if df_img_raw.shape[1] != 5:
                                     print(f"❌ IMGIA devolvió un número inesperado de columnas: {df_img_raw.shape[1]}")
                                     df_img_raw = pd.DataFrame(columns=columnas_img)
                                 else:
                                     df_img_raw.columns = columnas_img
-
                                     for col, func_name in [
                                         ("Cantidad Gem", "limpiar_cantidad"),
                                         ("Precio Gem", "limpiar_numero"),
@@ -122,23 +177,23 @@ def main():
                                 print(f"❌ Error al leer CSV IMGIA para '{proveedor}': {e}")
                                 df_img_raw = pd.DataFrame(columns=columnas_img)
 
-                            df_final = alinear_y_combinar(df_ocr, df_img_raw)
-
-                            if pd.Series(df_final.columns).duplicated().any():
-                                df_final.columns = [
-                                    f"{col}_{i}" if pd.Series(df_final.columns).duplicated()[j] else col
-                                    for j, (i, col) in enumerate(zip(range(len(df_final.columns)), df_final.columns))
-                                ]
-                                print("⚠️ Columnas duplicadas detectadas. Fueron renombradas.")
-
-                            resultados_df.append(df_final)
-                            print(f"✅ Resultado final para {proveedor}:")
-                            print(df_final)
-
+                        except AttributeError:
+                            print(f"⚠️ El módulo '{proveedor}' no tiene la función 'prompt_imgia'. Se salta IMGIA.")
                         except Exception as e:
-                            print(f"❌ Error procesando proveedor '{proveedor}': {e}")
-                    else:
-                        print("❌ No se pudo extraer texto con Mistral OCR.")
+                            print(f"❌ Error procesando IMGIA para '{proveedor}': {e}")
+
+                        df_final = alinear_y_combinar(df_ocr, df_img_raw)
+
+                    # Validar columnas duplicadas
+                    if pd.Series(df_final.columns).duplicated().any():
+                        df_final.columns = [
+                            f"{col}_{i}" if pd.Series(df_final.columns).duplicated()[j] else col
+                            for j, (i, col) in enumerate(zip(range(len(df_final.columns)), df_final.columns))
+                        ]
+
+                    resultados_df.append(df_final)
+                    print(f"✅ Resultado final para {proveedor}:")
+                    print(df_final)
                     break
         else:
             print(f"❌ No se encontró proveedor coincidente para: {nombre_archivo}")

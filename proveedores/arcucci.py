@@ -27,7 +27,7 @@ def limpiar_numero(valor):
 def procesar(texto_ocr):
     prompt = f"""
 Tu rol es actuar como un operador de Data Entry para una empresa gastronómica. Vas a estructurar facturas como una tabla con las siguientes columnas:
-Fecha, Producto, Cantidad, Precio OCR, Total, Local, Proveedor.
+Codigo, Producto, Cantidad, Precio OCR, Total, Local, Proveedor.
 Importante, el CSV siempre tiene que tener 7 columnas.
 - No generes líneas en blanco entre productos.
 - No agregues ningún texto ni antes ni después del csv. Solo debes devolver el CSV limpio.
@@ -48,6 +48,7 @@ Tenes prohibido inventar, redondear cualquier numero o información. Solo podes 
         ** Importante: El campo "Cantidad", siempre lo encontrarás posterior a la descripción.
         ** Es decir, cuando termina la descripción de un producto, el próximo número con el siguiente formato: "3,00" será la cantidad facturada del producto.
         ** El campo Cantidad es el más importante y en el que no se puede fallar.
+        ** El Codigo siempre serán los numeros que están antes de la descripción del producto! son numeros sin separador de miles ni decimales. es decir "3243" o "34352552"
         ** El OCR brinda un campo "CTD ITEMS:" el cual tiene el total de Cantidades facturadas. Las cantidades que pongas tienen que ser las que sigan las instrucciones, y deben coincidir con ese total.
 ❗ ATENCIÓN: Si una celda contiene comillas dobles dentro del texto (por ejemplo `"SEIQ"`), debés ESCAPARLAS correctamente usando doble comilla ("").
 ❗ Todos los números decimales deben estar escritos con punto como separador decimal y sin comas de miles.
@@ -77,7 +78,7 @@ Texto OCR:
             print("🔎 Resultado CSV devuelto por Gemini:\n", resultado_csv)
             return None
 
-        df.columns = ["Fecha", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"]
+        df.columns = ["Codigo", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"]
 
         # Limpieza numérica inteligente
         df["Cantidad"] = df["Cantidad"].apply(limpiar_numero)
@@ -110,11 +111,63 @@ Texto OCR:
 
         # Orden final de columnas
         columnas_finales = [
-            "Fecha", "Producto", "Cantidad", "Precio", 
+            "Codigo", "Producto", "Cantidad", "Precio", 
             "Total", "Local", "Proveedor", "Alerta", "Precio Check", "Total Check"
         ]
+
         return df[columnas_finales]
 
     except Exception as e:
         print(f"❌ Error al procesar CSV en {__file__}: {e}")
         return None
+
+def prompt_imgia(download_url):
+    return f'''
+Estás en rol de un Data Entry profesional. Vas a procesar la siguiente imagen de una factura gastronómica.
+
+🔗 Enlace a la imagen: {download_url}
+Extraé la siguiente información y devolvela en formato CSV:
+Respeta estas 5 columnas, siempre deben ser las mismas. La información está en la factura, no hay información faltante.
+No agregues columnas ni quites. Deben ser estas 4.
+Columnas:
+- "Código Gem" usar el "Código" del proveedor para cada artículo. Los códigos pueden variar, pero generalmente tienen un formato así: F00098, F00516, A00645, A00801, G00498.
+- "Producto Gem"  usar "Descripción"
+- "Cantidad Gem" → usar "Cant.Kg" si está, si no "Cant.Uni". Es decir, siempre trae con prioridad "Cant.Kg", si ese campo está vacío, traes "Cant.Uni"
+- "Precio Gem" usar "Precio Unit"
+- "Total Gem" usar "Total"
+
+No agregues ninguna palabra, ningún texto ni carácter antes ni después del CSV. Solo quiero la tabla limpia con los datos correctos para que no se rompan los procesos posteriores.
+
+** Producto: Es la descripción del producto, en este proveedor compramos generalmente artículos de limpieza y packagine, entre otros. No confundas este campo "Producto" con el código del proveedor, código cual por ahora no nos interesa.
+Tenes prohibido inventar, redondear cualquier numero o información. Solo podes organizar la extracción del OCR basado en las siguientes reglas:
+📍 El Local será el texto que sigue a la palabra "SEÑOR/ES".
+    ** ¡¡ MUY IMPORTANTE, CAMPO 'CANTIDAD'!!:
+        ** Las cantidades el OCR las proporciona de la siguiente manera: "10,00" (corresponde a diez unidades, (10.0)). No confundas estos campos.
+        ** Debes poner las cantidades tal cual te las da el OCR, solo cambia la "," por el ".". 
+        ** Reglas campo "Cantidad":
+        ** Importante: El campo "Cantidad", siempre lo encontrarás posterior a la descripción.
+        ** Es decir, cuando termina la descripción de un producto, el próximo número con el siguiente formato: "3,00" será la cantidad facturada del producto.
+        ** El campo Cantidad es el más importante y en el que no se puede fallar.
+        ** El Codigo siempre serán los numeros que están antes de la descripción del producto! son numeros sin separador de miles ni decimales. es decir "3243" o "34352552"
+        ** El OCR brinda un campo "CTD ITEMS:" el cual tiene el total de Cantidades facturadas. Las cantidades que pongas tienen que ser las que sigan las instrucciones, y deben coincidir con ese total.
+❗ ATENCIÓN: Si una celda contiene comillas dobles dentro del texto (por ejemplo `"SEIQ"`), debés ESCAPARLAS correctamente usando doble comilla ("").
+❗ Todos los números decimales deben estar escritos con punto como separador decimal y sin comas de miles.
+
+**Formato CSV válido:**
+- Todos los campos entre comillas dobles (").
+- Separados por coma.
+- Una línea por producto.
+- Repetí la fecha si aparece solo una vez.
+- Sin encabezado.
+📌 Instrucciones:
+- No pongas texto fuera del CSV.
+- Si no hay un campo, dejar en blanco ("").
+- Usá comillas dobles en todos los valores.
+- Sin encabezado.
+- Separador de columnas: coma.
+- Repetí la fecha en todas las líneas.
+- No uses separadores de miles.
+- Una línea por producto.
+
+Imagen: {download_url}
+'''
