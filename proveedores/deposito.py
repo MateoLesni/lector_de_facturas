@@ -10,16 +10,53 @@ def limpiar_numero(valor):
         if not val or pd.isna(val):
             return 0.0
 
-        # Si es número argentino con separador de miles: "18.974,70"
-        if "," in val and "." in val:
-            val = val.replace(".", "").replace(",", ".")
-        elif "," in val:
-            val = val.replace(",", ".")  # decimal simple
-        # Si solo tiene punto (en lugar de coma), lo dejamos así
+        # Si tiene coma (es separador decimal), eliminar puntos como separadores de miles
+        if "," in val:
+            val = val.replace(".", "")
+            val = val.replace(",", ".")
+        elif val.count(".") > 1:
+            # Si tiene múltiples puntos pero sin coma, dejar solo el último punto como decimal
+            partes = val.split(".")
+            val = "".join(partes[:-1]) + "." + partes[-1]
 
         return float(val)
     except:
         return 0.0
+    
+import re
+
+def limpiar_total(valor):
+    try:
+        val = str(valor).strip().replace(" ", "")
+        if not val or pd.isna(val):
+            return 0.0
+
+        # Reemplazar coma por punto en caso europeo
+        if "," in val:
+            val = val.replace(".", "").replace(",", ".")
+            return float(val)
+
+        # Detectar si es tipo "18.974.700" (más de un punto)
+        if val.count(".") >= 2:
+            partes = val.split(".")
+            # Asumir último grupo como decimal
+            decimal = partes[-1][:2]  # solo dos decimales
+            entero = "".join(partes[:-1])
+            val = f"{entero}.{decimal}"
+            return float(val)
+
+        # Detectar si es número con solo un punto pero largo (tipo 18974.700 → probablemente mal OCR)
+        match = re.match(r"^\d{5,}\.\d{2,4}$", val)
+        if match:
+            return round(float(val), 2)
+
+        # Último intento normal
+        return float(val)
+    except:
+        return 0.0
+
+
+
 
 # Lo mismo para cantidad:
 def limpiar_cantidad(valor):
@@ -68,6 +105,18 @@ Prohibido agregar texto, carácteres o letras antes o despúes del csv. (Ejemplo
 ** Cantidad: Corresponde a los valores de la tercer columna, es decir columna del OCR "Cantidad", la cual nos brinda información de cuantos kgs o unidades compramos. 
 ** Precio OCR: Corresponde a la columna "Precio Neto Unitario" del OCR.
 ** Total: Corresponde a la columna "Total Neto" del OCR. 
+⚠ CUIDADO con los números de la columna "Total" que contienen **más de un punto**. Estos pueden ser interpretados erróneamente como millones. Por ejemplo:
+
+- "18.974.700" debe entenderse como "18974,70"
+- "5.234.800" debe entenderse como "5234,80"
+
+En estos casos:
+✅ Eliminá los puntos de miles.
+✅ Considerá los **últimos dos dígitos** como decimales.
+❌ Nunca devuelvas montos con más de una coma o con demasiados ceros.
+
+Ejemplo:
+"21.542.000" → se convierte a "21542,00" (Total)
 🧾 El proveedor será "Depósito Central".
 
 Los números proporcionados son formato "132,00" o "132,000" que corresponden a ciento treinta y dos. Otro ej: "5.142,00" y "5.142,000" que ambos corresponden a cinco mil ciento cuarenta y dos. No uses separador de miles, solo usa "," para separador de decimales.
@@ -136,7 +185,7 @@ Texto OCR:
                 return 0.0
 
         df["Cantidad"] = df["Cantidad"].apply(limpiar_numero)
-        df["Total"] = df["Total"].apply(limpiar_numero)
+        df["Total"] = df["Total"].apply(limpiar_total)
         df["Precio OCR"] = df["Precio OCR"].apply(limpiar_numero)
 
         df = df.dropna(subset=["Cantidad", "Total"])
