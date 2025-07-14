@@ -25,22 +25,24 @@ articulos_validos = [
 diccionario_errores = {
     "FRUTILLA": ["frut", "fretillu", "frotillen", "frutila", "frutilla.", "frutill"],
     "PERA": ["pero", "peru", "perra", "peda", "peta"],
-    "CEBOLLA": ["CERULLA", "seboya"],
+    "CEBOLLA": ["CERULLA", "seboya", "CERVILLA"],
     "CEBOLLON": ["CEROLLOA", "CEROLLON", "CEBOLOA"],
     "ALBAHACA": ["albajaca", "albahca", "alvaaca", "ALABANCA", "ALBHARACA"],
     "ZANAHORIA": ["zanaharia", "zanajoria", "sanahoria"],
     "CIBOULETTE": ["CIRCULLATE", "CIBOLETE"],
     "SOJA": ["AGIA", "SOJ"],
     "PAPA NEGRA": ["PAPA NEURA", "PAPA NERA", "PAPA EGRA", "PEPE NEGRA", "PARA SEURA"],
-    "KIWI": ["KINT", "KIW", "KII", "NIWI", "NIKI"],
+    "KIWI": ["KINT", "KIW", "KII", "NIWI", "NIKI", "KINC"],
     "TOMILLO": ["TORCELO", "TOMELO"],
-    "NARANJA": ["BARANZE", "NRNJA"],
+    "NARANJA": ["BARANZE", "NRNJA", "BARARJA"],
     "BANANA": ["BANDES", "BARANA", "BAN"],
     "PEREJIL": ["PERSJIL", "PERIJOL"],
     "RUCULA": ["RUCOLA", "RUCULE"],
     "ARANDANO": ["ARABOANO", "ARADAN"],
     "TOMATE": ["TUMATE", "TOMETE"],
-    "PALTA A PUNTO": ["PALTA A PUNTO X", "PALTA"]
+    "PALTA A PUNTO": ["PALTA A PUNTO X", "PALTA"],
+    "ZUCHINI":["ZOQUINI", "ZOQUINl"],
+    "MANZANA":["MINCARA", "MANSARA"]
 }
 
 def normalizar(texto):
@@ -62,20 +64,33 @@ def match_con_diccionario(producto):
 def procesar(texto_ocr):
     prompt=f"""
 Tu rol es actuar como un operador de Data Entry para una empresa gastronómica. Vas a estructurar facturas como una tabla con las siguientes columnas:
-Fecha, Producto, Cantidad, Total, Local, Proveedor
+Codigo, Producto, Cantidad, Precio OCR, Total, Local, Proveedor
+Tenes determinadamente prohibido inventar información. Si no encontras un campo, como última opción pon '0'.
 Local: El local está escrito debajo del logo del proveedor.
 Proveedor: Siempre será "Verduleria Raices"
 ⚠️ Cada línea debe tener exactamente 7 columnas, separadas por coma.
 ⚠️ No incluyas comentarios ni líneas fuera del formato CSV. Ignorá remitos, totales, descuentos y notas al pie.
 Las cantidades y subtotal está siempre a la derecha de la descripción del producto. Subtotal es muy importante que entiendas que está al final de la línea de cada producto. No puedes equivocarte en ningún campo, menos en este!
 Ignorar los numeros que están antes del producto o descripción. (Son códigos del proveedor que no nos interesan.)
-Por ej: Albahaca ....... PAQUETE...     (cantidad)6.00  (precio)500.00   (subtotal)3000.00 
+Por ej: (código)'2' 1 (descripción)'Albahaca' ....... PAQUETE...     (cantidad)'6.00'  (precio)'500.00'   (subtotal)'3000.00' 
+|  2 | 1 ALBANACA. | PAQUETE. | 6.00 | 500.00 | 3,000.00  |
+| --- | --- | --- | --- | --- | --- |
+|  33 | 1 ZOQUINI. | KILOS. | 2.00 | 930.00 | 1,860.00  |
+|  18 | 1 BERENJENA. | KILOS. | 2.00 | 1,200.00 | 2,400.00  |
+|  35 | 1 BATATA. | KILOS. | 4.00 | 890.00 | 3,560.00  |
+|  1 | 3 CEBOLLA. | MORADA. | 1.50 | 818.00 | 1,227.00  |
+|  38 | 1 HUEVO. | bandeja. | 1.00 | 6,000.00 | 6,000.00  |
+|  191 | 1 APIO. | UNIZAD. | 1.00 | 2,000.00 | 2,000.00  |
+|  923 | 1 CHERRY. | KILOS. | 2.00 | 7,000.00 | 14,000.00  |
+En este caso, por más que el OCR marcó una línea debajo de la "albanaca", debes integrarlo también como un producto ya que contiene todos los campos como un artículo más.
+
+La primer columna es el código, segunda columna es descripción, cuarta columna cantidades, quinta columna precio, sexta columna subtotal.
+El orden de estas puede que varíe según el trabajo del OCR. Es solo a modo informativo para que encuentres patrones.
 Ignora si el producto es por Paquete o por Kilo/s. Solo nos interesa saber qué verdura o fruta es. El resto no importa en descripción.
 **Formato CSV válido:**  
    - IMPORTANTE: los campos deben estar entre comillas dobles (`"`).  por ej "Lechuga", "0,5", "100", "50"
    - Separá los campos con comas.  
    - Una línea por producto.  
-   - Si la fecha aparece una vez, repetila en todas las filas. (La fecha siempre se encuentra en la parte superior a la derecha, generalmente en formato xx/xx/xxxx)
    - **No uses separadores de miles.**
 
 Tenes totalmente prohibido recortar o agregar información no pedida explícitamente. No recortes ni abrevies descripciones, no modifiques ni redondees precios ni cantidades.
@@ -111,11 +126,11 @@ Texto OCR:
         df = pd.read_csv(StringIO(resultado_csv), header=None)
 
         if df.shape[1] == 7:
-            df.columns = ["Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor"]
+            df.columns = ["Codigo", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"]
         elif df.shape[1] == 6:
-            df.columns = ["Fecha", "Producto", "Cantidad", "Total", "Local", "Proveedor"]
-            df["Precio"] = ""
-            df = df[["Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor"]]
+            df.columns = ["Codigo", "Producto", "Cantidad", "Total", "Local", "Proveedor"]
+            df["Precio OCR"] = ""
+            df = df[["Codigo", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"]]
         else:
             print(f"❌ Estructura de columnas inesperada: {df.shape[1]} columnas")
             print(df.head())
@@ -130,8 +145,8 @@ Texto OCR:
         df["Cantidad"] = df["Cantidad"].apply(limpiar_numero)
         df["Total"] = df["Total"].apply(limpiar_numero)
 
-        if (df["Precio"] == "").all():
-            df["Precio"] = (df["Total"] / df["Cantidad"]).round(2)
+        
+        df["Precio"] = (df["Total"] / df["Cantidad"]).round(2)
 
         df = df[df["Producto"].notna() & (df["Producto"].str.strip() != "")]
         df = df[df["Cantidad"] > 0]
@@ -155,9 +170,70 @@ Texto OCR:
 
 
         df["Producto"] = df["Producto"].apply(obtener_mejor_match)
+                # Cálculo del precio
+        df["Precio OCR"] = df["Precio OCR"].apply(limpiar_numero)
+        df["Precio"] = (df["Total"] / df["Cantidad"]).round(2)
+        df["Precio Check"] = df["Precio OCR"].round(2)
+        df["Total Check"] = (df["Precio Check"] * df["Cantidad"]).round(2)
+        df["Dif Precio"] = (df["Precio Check"] - df["Precio"]).round(2)
+        df["Dif Total"] = (df["Total Check"] - df["Total"]).round(2)
+        df["Q Check"] = (df["Total"] / df["Precio"]).round(2)
+        df["Dif Q"] = (df["Q Check"] - df["Cantidad"]).round(2)
 
-        return df[["Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor"]]
+        def generar_alerta(row):
+            if abs(row["Dif Precio"]) > 2:
+                return "Diferencia de Precio"
+            elif abs(row["Dif Total"]) > 2:
+                return "Diferencia de Total"
+            elif abs(row["Dif Q"]) > 0:
+                return "Diferencia de Q"
+            else:
+                return "OK"
+
+        df["Alerta"] = df.apply(generar_alerta, axis=1)
+
+        # Orden final de columnas
+        columnas_finales = ["Codigo", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta",
+                            "Precio Check", "Total Check"]
+        return df[columnas_finales]
 
     except Exception as e:
         print(f"❌ Error al procesar CSV en {__file__}: {e}")
         return None
+
+
+def prompt_imgia(download_url):
+    return f'''
+Estás en rol de un Data Entry profesional. Vas a procesar la siguiente imagen de una factura gastronómica.
+Tenes determinadamente prohibido inventar información. Como última opción si no encontras un campo, pon 0. 
+
+
+🔗 Enlace a la imagen: {download_url}
+Extraé la siguiente información y devolvela en formato CSV:
+Respeta estas 5 columnas, siempre deben ser las mismas. La información está en la factura, no hay información faltante.
+No agregues columnas ni quites. Deben ser estas 5.
+Columnas:
+- "Código Gem" usar el "Código" del proveedor para cada artículo. Los códigos pueden variar, generalmente son números chicos como "12", "1", "2". Son números sin espacios. y el código es el primero que está antes del espacio.
+- "Producto Gem"  usar "Descripción"
+- "Cantidad Gem" → usar el número que está luego de descripción y unidad de medida. es decir, primer número luego de texto.
+- "Precio Gem" es la columna que le sigue a cantidad.
+- "Total Gem" última columna del lado derecho.
+
+No agregues ninguna palabra, ningún texto ni carácter antes ni después del CSV. Solo quiero la tabla limpia con los datos correctos para que no se rompan los procesos posteriores.
+
+📌 Instrucciones:
+- No pongas texto fuera del CSV.
+- Si no hay un campo, dejar en blanco ("").
+- Usá comillas dobles en todos los valores.
+- Sin encabezado.
+- Separador de columnas: coma.
+- No uses separadores de miles.
+- Una línea por producto.
+
+Una devolución correcta es exactamente así (Ejemplo):
+"Barritas de submarino Aguila Caja (24 x 14 gr)","1","14946,31","14946,31"
+"Queso Crema Milka ut Balde x 3.6 Kg","2","40698,53","81397,05"
+"Rebozador Preferido Bolsa x 5 Kg","1","8961,05","8961,05"
+
+Imagen: {download_url}
+'''

@@ -129,7 +129,7 @@ Tenes prohibido agregar texto, información o lo que fuera antes o después del 
 - Todos los campos entre comillas dobles (").
 - Separados por coma.
 - Una línea por producto.
-- Repetí la fecha si aparece solo una vez.
+- Repetí la Codigo si aparece solo una vez.
 - No uses separadores de miles.
 - Sin encabezado.
 
@@ -157,7 +157,7 @@ Texto OCR:
             print("❌ No hay filas válidas en el CSV generado.")
             return None
 
-        df = pd.DataFrame(filas_validas, columns=["Fecha", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"])
+        df = pd.DataFrame(filas_validas, columns=["Codigo", "Producto", "Cantidad", "Precio OCR", "Total", "Local", "Proveedor"])
 
         # 🧼 Limpieza segura de números
         def limpiar_numero(valor):
@@ -212,7 +212,7 @@ Texto OCR:
         df["Alerta"] = df.apply(generar_alerta, axis=1)
 
         columnas_finales = [
-            "Fecha", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta",
+            "Codigo", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor", "Alerta",
             "Precio Check", "Total Check", "Q Check"
         ]
         return df[columnas_finales]
