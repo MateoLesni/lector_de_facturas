@@ -61,7 +61,7 @@ Tenes determinadamente prohibido inventar información. Como última opción si 
 ** Precio OCR: Corresponde a la columna "UNITARIO".Copia el número tal cual te lo brinda el OCR.
 ** Total: Corresponde a la columna "TOTAL" de cada producto. Copia el número tal cual te lo brinda el OCR.
 📍 El Local será el texto que sigue a la palabra "Nombre Fantasia:"
-🧾 El proveedor será "Buenos Ayres Vinos y Bebidas SA".
+🧾 El proveedor será "Avez".
 
 
 **Formato CSV válido:**

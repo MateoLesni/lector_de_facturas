@@ -74,18 +74,26 @@ def procesar_con_document_ai(file_id):
         return None
 
 def alinear_y_combinar(df_ocr, df_img_raw):
+    # Si IMGIA no devolvió nada, devolvemos solo OCRIA (aunque esté vacío)
     if df_img_raw.empty:
         return df_ocr
 
+    # Si OCRIA está vacío pero IMGIA tiene datos, rellenamos OCRIA con filas vacías para que coincidan
+    if df_ocr.empty:
+        df_ocr = pd.DataFrame([[""] * len(df_img_raw)] * len(df_img_raw), columns=[f"OCR_Col_{i}" for i in range(len(df_img_raw))])
+        return pd.concat([df_ocr.reset_index(drop=True), df_img_raw.reset_index(drop=True)], axis=1)
+
+    # Si OCRIA tiene solo una fila y IMGIA tiene varias, replicamos la fila de OCRIA
     if len(df_ocr) == 1 and len(df_img_raw) > 1:
-        df_ocr = pd.DataFrame([[""] * df_ocr.shape[1]] * len(df_img_raw), columns=df_ocr.columns)
+        df_ocr = pd.DataFrame([df_ocr.iloc[0].tolist()] * len(df_img_raw), columns=df_ocr.columns)
+
+    # Si tienen distinta cantidad de filas, reindexamos IMGIA para que coincida con OCRIA
     elif len(df_ocr) != len(df_img_raw):
         df_img_raw = df_img_raw.reindex(range(len(df_ocr))).fillna("")
 
     return pd.concat([df_ocr.reset_index(drop=True), df_img_raw.reset_index(drop=True)], axis=1)
 
 
-# --- MAIN ---
 def main():
     folder_id = '1YCEgOfDfyD9levr4_ouoXpxy0l0n5QXH'
     imagenes = listar_imagenes(folder_id)
@@ -124,16 +132,18 @@ def main():
                         print("📤 Texto OCR Mistral:")
                         print(texto)
 
+                        df_ocr = pd.DataFrame()
                         try:
                             df_ocr = modulo.procesar(texto)
-                            if df_ocr is None:
-                                print(f"❌ No se pudo procesar OCRIA para proveedor '{proveedor}'")
-                                continue
-                            print("\n✅ Resultado estructurado OCRIA:")
-                            print(df_ocr)
+                            if df_ocr is None or df_ocr.empty:
+                                print(f"⚠️ No se pudo procesar OCRIA para proveedor '{proveedor}', se continuará con IMGIA.")
+                                df_ocr = pd.DataFrame()
+                            else:
+                                print("\n✅ Resultado estructurado OCRIA:")
+                                print(df_ocr)
                         except Exception as e:
-                            print(f"❌ Error procesando proveedor '{proveedor}': {e}")
-                            continue
+                            print(f"⚠️ Error procesando OCRIA para proveedor '{proveedor}': {e}. Se continuará con IMGIA.")
+                            df_ocr = pd.DataFrame()
 
                         # Gemini IMGIA
                         df_img_raw = pd.DataFrame(columns=columnas_img)
@@ -142,40 +152,46 @@ def main():
                         try:
                             prompt_img = modulo.prompt_imgia(download_url)
                             imagen_pil = obtener_imagen_desde_drive(file_id)
+
                             resultado_img = estructurar_con_prompt_imgia(prompt_img, imagen_pil)
                             resultado_img = limpiar_csv_de_respuesta(resultado_img)
+                            print(f"\n🧾 Texto crudo devuelto por IMGIA:\n{resultado_img}")
 
-                            try:
-                                df_img_raw = pd.read_csv(
-                                    StringIO(resultado_img),
-                                    header=None,
-                                    quoting=csv.QUOTE_ALL,
-                                    skip_blank_lines=True,
-                                    on_bad_lines='warn'
-                                )
-
-
-                                if df_img_raw.shape[1] != 5:
-                                    print(f"❌ IMGIA devolvió un número inesperado de columnas: {df_img_raw.shape[1]}")
-                                    df_img_raw = pd.DataFrame(columns=columnas_img)
-                                else:
-                                    df_img_raw.columns = columnas_img
-                                    for col, func_name in [
-                                        ("Cantidad Gem", "limpiar_cantidad"),
-                                        ("Precio Gem", "limpiar_numero"),
-                                        ("Total Gem", "limpiar_numero")
-                                    ]:
-                                        try:
-                                            func = getattr(modulo, func_name)
-                                            df_img_raw[col] = df_img_raw[col].apply(func)
-                                        except AttributeError:
-                                            print(f"⚠️ {func_name} no está definido en el módulo '{proveedor}'. Se deja sin aplicar.")
-                                        except Exception as e:
-                                            print(f"⚠️ Error aplicando {func_name}: {e}")
-
-                            except Exception as e:
-                                print(f"❌ Error al leer CSV IMGIA para '{proveedor}': {e}")
+                            if resultado_img.strip() == "":
+                                print("⚠️ IMGIA devolvió texto vacío.")
                                 df_img_raw = pd.DataFrame(columns=columnas_img)
+                            else:
+                                try:
+                                    df_img_raw = pd.read_csv(
+                                        StringIO(resultado_img),
+                                        header=None,
+                                        skip_blank_lines=True,
+                                        on_bad_lines='warn',
+                                        quotechar='"',
+                                        sep=","
+                                    )
+                                    print(f"📊 IMGIA devolvió {df_img_raw.shape[0]} filas y {df_img_raw.shape[1]} columnas")
+
+                                    if df_img_raw.shape[1] == len(columnas_img):
+                                        df_img_raw.columns = columnas_img
+                                        for col, func_name in [
+                                            ("Cantidad Gem", "limpiar_cantidad"),
+                                            ("Precio Gem", "limpiar_numero"),
+                                            ("Total Gem", "limpiar_numero")
+                                        ]:
+                                            try:
+                                                func = getattr(modulo, func_name)
+                                                df_img_raw[col] = df_img_raw[col].apply(func)
+                                            except AttributeError:
+                                                print(f"⚠️ {func_name} no está definido en el módulo '{proveedor}'. Se deja sin aplicar.")
+                                            except Exception as e:
+                                                print(f"⚠️ Error aplicando {func_name}: {e}")
+                                    else:
+                                        print(f"⚠️ CSV IMGIA mal formado. Columnas: {df_img_raw.shape[1]}")
+                                        df_img_raw = pd.DataFrame(columns=columnas_img)
+                                except Exception as e:
+                                    print(f"❌ Error leyendo CSV de IMGIA: {e}")
+                                    df_img_raw = pd.DataFrame(columns=columnas_img)
 
                         except AttributeError:
                             print(f"⚠️ El módulo '{proveedor}' no tiene la función 'prompt_imgia'. Se salta IMGIA.")
@@ -191,6 +207,22 @@ def main():
                             for j, (i, col) in enumerate(zip(range(len(df_final.columns)), df_final.columns))
                         ]
 
+                    # --- Asegurar columnas Gem primero y orden final ---
+                    columnas_gem = ["Código Gem", "Producto Gem", "Cantidad Gem", "Precio Gem", "Total Gem"]
+                    columnas_ocr = ["Codigo", "Producto", "Cantidad", "Precio", "Total", "Local", "Proveedor"]
+
+                    for col in columnas_gem:
+                        if col not in df_final.columns:
+                            df_final[col] = ""
+
+                    for col in columnas_ocr:
+                        if col not in df_final.columns:
+                            df_final[col] = ""
+
+                    df_final["Nombre Archivo"] = img['name']
+                    columnas_ordenadas = columnas_gem + columnas_ocr + ["Nombre Archivo"]
+                    df_final = df_final[[col for col in columnas_ordenadas if col in df_final.columns]]
+
                     resultados_df.append(df_final)
                     print(f"✅ Resultado final para {proveedor}:")
                     print(df_final)
@@ -203,6 +235,8 @@ def main():
         escribir_en_bd_local(df_total)
     else:
         print("⚠️ No se generaron resultados para guardar.")
+
+
 
 if __name__ == "__main__":
     main()
